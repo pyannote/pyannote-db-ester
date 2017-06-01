@@ -34,6 +34,7 @@ del get_versions
 
 from pyannote.database import Database
 from pyannote.database.protocol import SpeakerDiarizationProtocol
+from pyannote.database.protocol import SegmentationProtocol
 from pyannote.parser import UEMParser, MDTMParser
 import os.path as op
 
@@ -43,6 +44,39 @@ class EsterSpeakerDiarizationProtocol(SpeakerDiarizationProtocol):
 
     def __init__(self, preprocessors={}, **kwargs):
         super(EsterSpeakerDiarizationProtocol, self).__init__(
+            preprocessors=preprocessors, **kwargs)
+        self.uem_parser_ = UEMParser()
+        self.mdtm_parser_ = MDTMParser()
+
+    def _subset(self, protocol, subset):
+
+        data_dir = op.join(op.dirname(op.realpath(__file__)), 'data')
+
+        # load annotated parts
+        # e.g. /data/{tv|radio|all}.{train|dev|test}.uem
+        path = op.join(data_dir, '{protocol}.{subset}.uem'.format(subset=subset, protocol=protocol))
+        uems = self.uem_parser_.read(path)
+
+        # load annotations
+        path = op.join(data_dir, '{protocol}.{subset}.mdtm'.format(subset=subset, protocol=protocol))
+        mdtms = self.mdtm_parser_.read(path)
+
+        for uri in sorted(uems.uris):
+            annotated = uems(uri)
+            annotation = mdtms(uri)
+            current_file = {
+                'database': 'Ester',
+                'uri': uri,
+                'annotated': annotated,
+                'annotation': annotation}
+            yield current_file
+
+
+class EsterSegmentationProtocol(SegmentationProtocol):
+    """Base segmentation protocol for ESTER database"""
+
+    def __init__(self, preprocessors={}, **kwargs):
+        super(EsterSegmentationProtocol, self).__init__(
             preprocessors=preprocessors, **kwargs)
         self.uem_parser_ = UEMParser()
         self.mdtm_parser_ = MDTMParser()
@@ -97,6 +131,18 @@ class Ester2(EsterSpeakerDiarizationProtocol):
         return self._subset('ester2', 'tst')
 
 
+class Gender(EsterSegmentationProtocol):
+    """Gender segmentation protocol"""
+
+    def trn_iter(self):
+        return self._subset('gender', 'trn')
+
+    def dev_iter(self):
+        return self._subset('gender', 'dev')
+
+    def tst_iter(self):
+        return self._subset('gender', 'tst')
+
 
 class Ester(Database):
     """ESTER corpus
@@ -114,3 +160,6 @@ www.afcp-parole.org/ester/
 
         self.register_protocol(
             'SpeakerDiarization', 'Ester2', Ester2)
+
+        self.register_protocol(
+            'Segmentation', 'Gender', Gender)
